@@ -19,7 +19,6 @@
         "react-native-orientation-locker.podspec",
         "react-native.config.js",
         "README.md",
-        "FORK.md",
         "LICENSE"
     ],
     "repository": {
