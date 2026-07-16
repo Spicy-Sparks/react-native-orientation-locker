@@ -68,9 +68,20 @@ static UIInterfaceOrientationMask _orientationMask = UIInterfaceOrientationMaskA
 {
     if(@available(iOS 13, *)) {
         UIInterfaceOrientation orientation = UIInterfaceOrientationUnknown;
-        UIScene *activeScene = [[UIApplication sharedApplication] connectedScenes].allObjects.firstObject;
-        if ([activeScene isKindOfClass:[UIWindowScene class]]) {
-            UIWindowScene *windowScene = (UIWindowScene *)activeScene;
+        // connectedScenes is an unordered set that may hold non-window scenes
+        // (e.g. CarPlay's CPTemplateApplicationScene). Blindly reading firstObject
+        // would miss the real window scene and report UNKNOWN. Pick a real
+        // UIWindowScene, preferring the foreground-active one.
+        UIWindowScene *windowScene = nil;
+        for (UIScene *scene in [[UIApplication sharedApplication] connectedScenes]) {
+            if ([scene isKindOfClass:[UIWindowScene class]]) {
+                windowScene = (UIWindowScene *)scene;
+                if (scene.activationState == UISceneActivationStateForegroundActive) {
+                    break;
+                }
+            }
+        }
+        if (windowScene != nil) {
             orientation = windowScene.interfaceOrientation;
         }
         
@@ -162,17 +173,32 @@ static UIInterfaceOrientationMask _orientationMask = UIInterfaceOrientationMaskA
     [Orientation setOrientation:mask];
     
     if (@available(iOS 16.0, *)) {
-        UIWindowScene *windowScene = (UIWindowScene *)[UIApplication sharedApplication].connectedScenes.allObjects.firstObject;
-        
-        UIWindowSceneGeometryPreferencesIOS *geometryPreferences = [[UIWindowSceneGeometryPreferencesIOS alloc] initWithInterfaceOrientations:mask];
-        [windowScene requestGeometryUpdateWithPreferences:geometryPreferences errorHandler:^(NSError * _Nonnull error) {
-#if DEBUG
-            if (error) {
-                NSLog(@"Failed to update geometry with UIInterfaceOrientationMask: %@", error);
+        // connectedScenes is an unordered set that may also contain non-window scenes
+        // (e.g. CarPlay's CPTemplateApplicationScene). Those do not respond to
+        // requestGeometryUpdateWithPreferences: and blind-casting firstObject to a
+        // UIWindowScene raises NSInvalidArgumentException. Pick a real UIWindowScene,
+        // preferring the foreground-active one.
+        UIWindowScene *windowScene = nil;
+        for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
+            if ([scene isKindOfClass:[UIWindowScene class]]) {
+                windowScene = (UIWindowScene *)scene;
+                if (scene.activationState == UISceneActivationStateForegroundActive) {
+                    break;
+                }
             }
+        }
+
+        if (windowScene != nil) {
+            UIWindowSceneGeometryPreferencesIOS *geometryPreferences = [[UIWindowSceneGeometryPreferencesIOS alloc] initWithInterfaceOrientations:mask];
+            [windowScene requestGeometryUpdateWithPreferences:geometryPreferences errorHandler:^(NSError * _Nonnull error) {
+#if DEBUG
+                if (error) {
+                    NSLog(@"Failed to update geometry with UIInterfaceOrientationMask: %@", error);
+                }
 #endif
-        }];
-        
+            }];
+        }
+
     } else {
         UIDevice* currentDevice = [UIDevice currentDevice];
         
@@ -258,34 +284,21 @@ RCT_EXPORT_METHOD(lockToLandscape)
     
 #if (!TARGET_OS_TV)
     dispatch_async(dispatch_get_main_queue(), ^{
-        // set a flag so that no deviceOrientationDidChange events are sent to JS
-        self->_isLocking = YES;
-        
-        UIInterfaceOrientation deviceOrientation = self->_lastDeviceOrientation;
-        
         UIInterfaceOrientation orientation = [self getInterfaceOrientation];
         NSString *orientationStr = [self getOrientationStr:orientation];
-        
-        // when call lockXXX, make sure to sent orientationDidChange event to JS
-        [[UIDevice currentDevice] setValue:[NSNumber numberWithInteger: UIInterfaceOrientationUnknown] forKey:@"orientation"];
-        
+
+        // Rotate via lockToOrientation: so iOS 16+ uses requestGeometryUpdate.
+        // The previous body relied only on [UIDevice setValue:forKey:@"orientation"],
+        // a private KVC hack that is a silent no-op on iOS 16+ (rotation there requires
+        // the geometry API). The mask keeps "either landscape edge"; the concrete
+        // orientation only drives the pre-iOS-16 KVC path and matches the edge the
+        // device is already closest to. lockToOrientation: handles _isLocking, the
+        // scene selection (CarPlay-safe) and the lockDidChange event.
         if ([orientationStr isEqualToString:@"LANDSCAPE-RIGHT"]) {
-            [Orientation setOrientation:UIInterfaceOrientationMaskLandscape];
-            [[UIDevice currentDevice] setValue:[NSNumber numberWithInteger: UIInterfaceOrientationLandscapeLeft] forKey:@"orientation"];
+            [self lockToOrientation:UIInterfaceOrientationLandscapeLeft usingMask:UIInterfaceOrientationMaskLandscape];
         } else {
-            [Orientation setOrientation:UIInterfaceOrientationMaskLandscape];
-            [[UIDevice currentDevice] setValue:[NSNumber numberWithInteger: UIInterfaceOrientationLandscapeRight] forKey:@"orientation"];
+            [self lockToOrientation:UIInterfaceOrientationLandscapeRight usingMask:UIInterfaceOrientationMaskLandscape];
         }
-        
-        // restore device orientation
-        [[UIDevice currentDevice] setValue:[NSNumber numberWithInteger: deviceOrientation] forKey:@"orientation"];
-        
-        [UIViewController attemptRotationToDeviceOrientation];
-        
-        // send a lock event
-        [self sendEventWithName:@"lockDidChange" body:@{@"orientation":@"LANDSCAPE-LEFT"}];
-        
-        self->_isLocking = NO;
     });
 #endif
 }

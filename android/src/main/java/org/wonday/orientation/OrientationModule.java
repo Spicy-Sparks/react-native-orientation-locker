@@ -169,11 +169,27 @@ public class OrientationModule extends ReactContextBaseJavaModule implements Ori
         callback.invoke(lastDeviceOrientationValue);
     }
 
+    // Android 8.0 (API 26) throws
+    // "IllegalStateException: Only fullscreen opaque activities can request orientation"
+    // when setRequestedOrientation() runs from a translucent / non-fullscreen activity
+    // (a framework bug Google fixed in 8.1). minSdk here includes API 26, so guard every
+    // call: a rotation that can't be applied must never crash the app. Returns whether
+    // the orientation was actually applied.
+    private boolean applyRequestedOrientation(Activity activity, int orientation) {
+        try {
+            activity.setRequestedOrientation(orientation);
+            return true;
+        } catch (IllegalStateException e) {
+            FLog.w(ReactConstants.TAG, "setRequestedOrientation failed", e);
+            return false;
+        }
+    }
+
     @ReactMethod
     public void lockToPortrait() {
         final Activity activity = getCurrentActivity();
         if (activity == null) return;
-        activity.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+        if (!applyRequestedOrientation(activity, ActivityInfo.SCREEN_ORIENTATION_PORTRAIT)) return;
         isLocked = true;
 
         // force send an UI orientation event
@@ -200,7 +216,7 @@ public class OrientationModule extends ReactContextBaseJavaModule implements Ori
     public void lockToPortraitUpsideDown() {
         final Activity activity = getCurrentActivity();
         if (activity == null) return;
-        activity.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT);
+        if (!applyRequestedOrientation(activity, ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT)) return;
         isLocked = true;
 
         // force send an UI orientation event
@@ -227,7 +243,7 @@ public class OrientationModule extends ReactContextBaseJavaModule implements Ori
     public void lockToLandscape() {
         final Activity activity = getCurrentActivity();
         if (activity == null) return;
-        activity.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+        if (!applyRequestedOrientation(activity, ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE)) return;
         isLocked = true;
 
         // force send an UI orientation event
@@ -254,7 +270,7 @@ public class OrientationModule extends ReactContextBaseJavaModule implements Ori
     public void lockToLandscapeLeft() {
         final Activity activity = getCurrentActivity();
         if (activity == null) return;
-        activity.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+        if (!applyRequestedOrientation(activity, ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE)) return;
         isLocked = true;
 
         // force send an UI orientation event
@@ -281,7 +297,7 @@ public class OrientationModule extends ReactContextBaseJavaModule implements Ori
     public void lockToLandscapeRight() {
         final Activity activity = getCurrentActivity();
         if (activity == null) return;
-        activity.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE);
+        if (!applyRequestedOrientation(activity, ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE)) return;
         isLocked = true;
 
         // force send an UI orientation event
@@ -309,7 +325,7 @@ public class OrientationModule extends ReactContextBaseJavaModule implements Ori
 
         final Activity activity = getCurrentActivity();
         if (activity == null) return;
-        activity.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR);
+        if (!applyRequestedOrientation(activity, ActivityInfo.SCREEN_ORIENTATION_SENSOR)) return;
         isLocked = false;
 
         //force send an UI orientation event when unlock
