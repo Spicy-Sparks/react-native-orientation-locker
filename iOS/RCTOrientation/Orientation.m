@@ -45,7 +45,7 @@ static UIInterfaceOrientationMask _orientationMask = UIInterfaceOrientationMaskA
         _disableFaceUpDown = NO;
         
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(deviceOrientationDidChange:) name:UIDeviceOrientationDidChangeNotification object:nil];
-        // PATCH (Lyra): removed `[self addListener:@"orientationDidChange"]`.
+        // PATCH: removed `[self addListener:@"orientationDidChange"]`.
         // RCTEventEmitter's listener count is managed by the JS bridge; calling
         // addListener natively double-counts and, paired with the dealloc
         // removeListeners:1 below, triggers "Attempted to remove more Orientation
@@ -59,7 +59,7 @@ static UIInterfaceOrientationMask _orientationMask = UIInterfaceOrientationMaskA
 - (void)dealloc
 {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
-    // PATCH (Lyra): removed `[self removeListeners:1]` — see init. It decremented
+    // PATCH: removed `[self removeListeners:1]` — see init. It decremented
     // the JS-managed RCTEventEmitter listener count that it never legitimately
     // owned, causing the "remove more than added" redbox on dealloc.
 }
